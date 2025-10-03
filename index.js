@@ -1,42 +1,58 @@
 var express = require('express');
 var app = express();
 var cors = require('cors');
+var dns = require('dns');
 
+// Middleware
 app.use(cors({optionsSuccessStatus: 200}));
 app.use(express.static('public'));
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
+// Home route
 app.get("/", function (req, res) {
   res.sendFile(__dirname + '/views/index.html');
 });
 
-app.get("/api/hello", function (req, res) {
-  res.json({greeting: 'hello API'});
-});
+// In-memory storage for URLs
+let urls = {};
+let counter = 1;
 
-// Timestamp Microservice endpoint
-app.get("/api/:date?", (req, res) => {
-  let dateString = req.params.date;
-  let date;
+// POST endpoint: create a short URL
+app.post("/api/shorturl", (req, res) => {
+  const url = req.body.url;
 
-  if (!dateString) {
-    date = new Date();
-  } else if (!isNaN(dateString)) {
-    date = new Date(Number(dateString));
-  } else {
-    date = new Date(dateString);
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (err) {
+    return res.json({ error: 'invalid url' });
   }
 
-  if (date.toString() === "Invalid Date") {
-    res.json({ error: "Invalid Date" });
-  } else {
+  dns.lookup(parsedUrl.hostname, (err) => {
+    if (err) return res.json({ error: 'invalid url' });
+
+    const id = counter++;
+    urls[id] = url;
+
     res.json({
-      unix: date.getTime(),
-      utc: date.toUTCString()
+      original_url: url,
+      short_url: id
     });
-  }
+  });
 });
 
-// Listen on port
+// GET endpoint: redirect using short URL
+app.get("/api/shorturl/:id", (req, res) => {
+  const id = req.params.id;
+  const url = urls[id];
+
+  if (!url) return res.json({ error: 'No short URL found' });
+
+  res.redirect(url);
+});
+
+// Listener
 var listener = app.listen(process.env.PORT || 3000, function () {
   console.log('Your app is listening on port ' + listener.address().port);
 });
